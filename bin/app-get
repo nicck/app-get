@@ -2,6 +2,8 @@
 
 # app-get install alfred
 
+set -e
+
 # ---- config ----
 
 APP_GET_BIN_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -30,21 +32,28 @@ app_install () {
 
   echo "----> install $app_name ($app_version)"
 
-  local file="$APP_GET_DOWNLOAD_DIR/$app_name-$app_version.$app_ext"
+  local install_dir="$APP_GET_APPLICATIONS_DIR/$app_name.app"
 
-  # download
-  curl --insecure --location --url "$app_url" --output "$file" \
-    --show-error --progress-bar --continue-at -
-  # --silent
+  if [[ -d "$install_dir" ]]
+  then
+    echo "$app_name ($app_version) already installed into $install_dir"
+  else
+    local file="$APP_GET_DOWNLOAD_DIR/$app_name-$app_version.$app_ext"
 
-  case "$app_ext" in
-    "dmg" ) dmg_install "$file" ;;
-    "zip" ) zip_install "$file" ;;
-    "sh" ) shell_run "$file" ;;
-    * ) echo "I have no idea how to install app from '$app_ext' file" ;;
-  esac
+    # download
+    curl --insecure --location --url "$app_url" --output "$file" \
+      --show-error --progress-bar --continue-at -
+    # --silent
 
-  app_configure $1
+    case "$app_ext" in
+      "dmg" ) dmg_install "$file" ;;
+      "zip" ) zip_install "$file" ;;
+      "sh" ) shell_run "$file" ;;
+      * ) echo "I have no idea how to install app from '$app_ext' file" ;;
+    esac
+
+    app_configure $1
+  fi
 }
 
 app_remove () {

@@ -1,0 +1,184 @@
+#!/bin/sh
+
+# app-get install alfred
+
+# ---- config ----
+
+APP_GET_BIN_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+APP_GET_MANIFEST_DIR="$APP_GET_BIN_DIR/../lib"
+APP_GET_APPLICATIONS_DIR=${APP_GET_APPLICATIONS_DIR-"/Applications"}
+APP_GET_DOWNLOAD_DIR="/Users/$(whoami)/Downloads/Applications"
+
+# ---- commands ----
+
+show_help () {
+  local command=$1
+  if [ -z "$command" ]
+  then
+    echo "app-get help [install|remove|list]"
+  else
+    case "$command" in
+      "install" ) echo "app-get install <app-name>" ;;
+      "remove"  ) echo "app-get remove <app-name>" ;;
+      "list"    ) echo "app-get list  --  Show list of available applications" ;;
+    esac
+  fi
+}
+
+app_install () {
+  load_manifest $1
+
+  echo "----> install $app_name ($app_version)"
+
+  local file="$APP_GET_DOWNLOAD_DIR/$app_name-$app_version.$app_ext"
+
+  # download
+  curl --insecure --location --url "$app_url" --output "$file" \
+    --show-error --progress-bar --continue-at -
+  # --silent
+
+  case "$app_ext" in
+    "dmg" ) dmg_install "$file" ;;
+    "zip" ) zip_install "$file" ;;
+    "sh" ) shell_run "$file" ;;
+    * ) echo "I have no idea how to install app from '$app_ext' file" ;;
+  esac
+
+  app_configure $1
+}
+
+app_remove () {
+  load_manifest $1
+
+  echo "----> remove $app_name ($app_version)"
+
+  osascript -e "tell application \"$app_name\" to quit"
+
+  command -v remove > /dev/null
+  if [ $? -eq 0 ]
+  then
+    remove
+  else
+    trash_or_rm "$APP_GET_APPLICATIONS_DIR/$app_name.app"
+    trash_or_rm "~/Library/Application Support/$app_name"
+  fi
+}
+
+app_configure () {
+  load_manifest $1
+
+  command -v configure > /dev/null
+  if [ $? -eq 0 ]
+  then
+    echo "----> configure $app_name ($app_version)"
+    configure
+  fi
+}
+
+app_list () {
+  for manifest in $(find $APP_GET_MANIFEST_DIR -name \*.sh)
+  do
+    local name=$(basename ${manifest%.*})
+
+    load_manifest $name
+
+    local install_dir="$APP_GET_APPLICATIONS_DIR/$app_name.app"
+
+    if [[ -d "$install_dir" ]]
+    then
+      echo "$name ($app_version) -> $install_dir"
+    else
+      echo "$name ($app_version)"
+    fi
+  done
+}
+
+# ---- suport functions ----
+
+load_manifest () {
+  local name=$1
+  local manifest="$APP_GET_MANIFEST_DIR/$name.sh"
+
+  if [ -f $manifest ]
+  then
+    source $manifest
+  else
+    echo "unknown app $name"
+  fi
+}
+
+dmg_install () {
+  mkdir /tmp/app_dmg 2> /dev/null
+
+  local filename=$1
+  local mountpoint="/tmp/app_dmg/$(basename $filename)"
+
+  hdiutil attach -nobrowse -readonly -mountpoint "$mountpoint" "$filename"
+
+  app_copy $mountpoint
+
+  hdiutil detach "$mountpoint"
+}
+
+zip_install () {
+  mkdir /tmp/app_zip 2> /dev/null
+
+  local filename="$1"
+  local extractdir="/tmp/app_zip/$(basename $filename)"
+
+  unzip -q "$filename" -d "$extractdir"
+
+  app_copy $extractdir
+
+  rm -rf "$extractdir"
+}
+
+app_copy () {
+  mountpoint=$1
+
+  for app in $mountpoint/*.app
+  do
+    local appfilename=$(basename "$app")
+    if [[ -d $APP_GET_APPLICATIONS_DIR/$appfilename ]]
+    then
+      echo "${appfilename%.*} already installed into $APP_GET_APPLICATIONS_DIR"
+    else
+      cp -r $mountpoint/*.app "$APP_GET_APPLICATIONS_DIR"
+    fi
+  done
+}
+
+trash_or_rm () {
+  local file="$1"
+
+  command -v trash > /dev/null
+  if [ $? -eq 0 ]
+  then
+    echo "moving $file to Trash folder"
+    trash "$file"
+  else
+    echo "removing $file"
+    rm -rf "$file"
+  fi
+
+}
+
+name () { app_name=$1; }
+version () { app_version=$1; }
+homepage () { app_homepage=$1; }
+provider () { app_ext=$1; }
+url () { app_url=$1; }
+
+[ ! -d $APP_GET_APPLICATIONS_DIR ] && mkdir "$APP_GET_APPLICATIONS_DIR"
+[ ! -d $APP_GET_DOWNLOAD_DIR ] && mkdir "$APP_GET_DOWNLOAD_DIR"
+
+# ---- main ----
+
+case "$1" in
+  "help"    ) show_help "$2" ;;
+  "install" ) app_install "$2" ;;
+  "remove"  ) app_remove "$2" ;;
+  "list"    ) app_list "$2" ;;
+  * ) show_help ;;
+esac
+

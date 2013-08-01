@@ -2,8 +2,6 @@
 
 # app-get install alfred
 
-set -e
-
 # ---- config ----
 
 APP_GET_BIN_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
